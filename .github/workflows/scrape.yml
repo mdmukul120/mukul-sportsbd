@@ -2,9 +2,12 @@ name: Cricket Lounge Scraper
 
 on:
   schedule:
-    # প্রতি ৫ মিনিট পরপর রান করার নির্দেশনা
+    # প্রতি ৫ মিনিট পরপর রান হবে
     - cron: '*/5 * * * *'
   workflow_dispatch: # ম্যানুয়ালি রান করার জন্য
+
+permissions:
+  contents: write # গিটহাব রেপোতে লেখার অনুমতির জন্য
 
 jobs:
   scrape_and_commit:
@@ -12,10 +15,10 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/python-action@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
