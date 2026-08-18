@@ -31,7 +31,6 @@ def scrape_cricket_lounge():
             # যদি প্লেয়ার আইডি সরাসরি বা ম্যাচের লিংকে থাকে
             decimal_id = None
             if match_link:
-                # সাব-পেজে ঢুকে আইডি খোঁজার চেষ্টা
                 if not match_link.startswith('http'):
                     match_link = f"https://cricketlounge.tv{match_link}"
                 
