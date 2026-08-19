@@ -7,8 +7,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-# আপকামিং ম্যাচের জন্য ডিফল্ট ভিডিও লিংক
-UPCOMING_VIDEO_URL = "Https://dtvoeevhaseb5.cloudfront.net/user-uploads/68a11d79-b983-42a8-8181-0d356a132d6a.mp4"
+# আপকামিং ম্যাচের জন্য দেওয়া ভিডিও লিংক
+UPCOMING_VIDEO_URL = "https://dtvoeevhaseb5.cloudfront.net/user-uploads/68a11d79-b983-42a8-8181-0d356a132d6a.mp4"
 
 def scrape_cricket_lounge():
     chrome_options = Options()
@@ -25,13 +25,13 @@ def scrape_cricket_lounge():
         driver.get(main_url)
         time.sleep(5)
 
-        # পেজ সম্পূর্ণ নিচে স্ক্রোল করে সব কার্ড লোড করা
+        # পেজ সম্পূর্ণ স্ক্রোল করা
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3)
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-        # পেজের সমস্ত ম্যাচ পেজের লিংক ফিল্টার করা
+        # পেজের সমস্ত ম্যাচের লিংক সংগ্রহ করা
         match_links = set()
         for a in soup.find_all('a', href=True):
             href = a['href']
@@ -59,14 +59,20 @@ def scrape_cricket_lounge():
                 if id_match:
                     decimal_id = id_match.group(1)
 
-                # ৩. ম্যাচের স্ট্যাটাস নির্ধারণ করা (Live, Upcoming, Recent)
-                status = "Upcoming"
-                if re.search(r'match ended|completed|finished|result', page_source, re.IGNORECASE):
-                    status = "Recent / Ended"
-                elif decimal_id or re.search(r'live', page_source, re.IGNORECASE):
-                    status = "Live"
+                # ৩. স্ট্যাটাস ট্র্যাকিং লজিক (নিখুঁত করার জন্য)
+                is_ended = re.search(r'match ended|completed|finished|result', page_source, re.IGNORECASE)
+                is_upcoming = re.search(r'upcoming|starts in|starts at|scheduled', page_source, re.IGNORECASE)
 
-                # ৪. আপকামিং ম্যাচের স্টার্ট টাইম বের করা
+                if is_ended:
+                    status = "Recent / Ended"
+                elif decimal_id: # যদি লাইভ ইমবেড প্লেয়ার আইডি পাওয়া যায়
+                    status = "Live"
+                elif is_upcoming:
+                    status = "Upcoming"
+                else:
+                    status = "Upcoming" # প্লেয়ার আইডি না থাকলে এবং খেলা শেষ না হলে ডিফল্ট আপকামিং ধরা হবে
+
+                # ৪. আপকামিং ম্যাচের সময় বের করা
                 start_time = "TBD"
                 time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?(?:\s*UTC|\s*GMT)?)', page_source, re.IGNORECASE)
                 date_match = re.search(r'(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b)', page_source, re.IGNORECASE)
@@ -80,13 +86,13 @@ def scrape_cricket_lounge():
                 img_elem = inner_soup.find('img')
                 img_url = img_elem.get('src') or img_elem.get('data-src') if img_elem else ""
 
-                # ৬. প্লেয়ার ইউআরএল লজিক
+                # ৬. প্লেয়ার ইউআরএল সেটিং (লজিক পরিবর্তন)
                 if status == "Live" and decimal_id:
                     player_url = f"https://www.decimalsports.com/embeddedplayer/?id={decimal_id}"
                 elif status == "Upcoming":
                     player_url = UPCOMING_VIDEO_URL
                 else:
-                    player_url = f"https://www.decimalsports.com/embeddedplayer/?id={decimal_id}" if decimal_id else "N/A"
+                    player_url = f"https://www.decimalsports.com/embeddedplayer/?id={decimal_id}" if decimal_id else UPCOMING_VIDEO_URL
 
                 matches.append({
                     "match_name": title,
@@ -97,7 +103,7 @@ def scrape_cricket_lounge():
                     "match_link": link
                 })
 
-                print(f"Scraped: {title} | Status: {status} | Start Time: {start_time}")
+                print(f"Scraped: {title} | Status: {status} | URL: {player_url}")
 
             except Exception as e:
                 print(f"Error scraping match {link}: {e}")
