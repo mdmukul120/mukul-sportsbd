@@ -2,6 +2,7 @@ name: Cricket Lounge Scraper
 
 on:
   schedule:
+    # প্রতি ৫ মিনিট পরপর অটোমেটিক রান হবে
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
