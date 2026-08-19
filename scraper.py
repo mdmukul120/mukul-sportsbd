@@ -7,6 +7,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
+# আপকামিং ম্যাচের জন্য ডিফল্ট ভিডিও লিংক
+UPCOMING_VIDEO_URL = "Https://dtvoeevhaseb5.cloudfront.net/user-uploads/68a11d79-b983-42a8-8181-0d356a132d6a.mp4"
+
 def scrape_cricket_lounge():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
@@ -20,16 +23,15 @@ def scrape_cricket_lounge():
     try:
         main_url = "https://cricketlounge.tv/"
         driver.get(main_url)
-        time.sleep(6)  # পেজ লোড হওয়ার জন্য অপেক্ষা
+        time.sleep(5)
 
-        # পেজ সম্পূর্ণ নিচে স্ক্রোল করা যাতে লেজি-লোড হওয়া ম্যাচগুলোও চলে আসে
+        # পেজ সম্পূর্ণ নিচে স্ক্রোল করে সব কার্ড লোড করা
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3)
 
-        page_source = driver.page_source
-        soup = BeautifulSoup(page_source, 'html.parser')
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-        # পেজের সমস্ত লিঙ্ক ফিল্টার করা
+        # পেজের সমস্ত ম্যাচ পেজের লিংক ফিল্টার করা
         match_links = set()
         for a in soup.find_all('a', href=True):
             href = a['href']
@@ -37,66 +39,77 @@ def scrape_cricket_lounge():
                 full_url = href if href.startswith('http') else f"https://cricketlounge.tv{href}"
                 match_links.add(full_url)
 
-        print(f"Total Match Links Found: {len(match_links)}")
+        print(f"Total Matches Found: {len(match_links)}")
 
         for link in match_links:
             try:
                 driver.get(link)
-                time.sleep(4)  # প্লেয়ার এবং তথ্য লোড হওয়ার জন্য সময়
+                time.sleep(4)
                 
-                inner_source = driver.page_source
-                inner_soup = BeautifulSoup(inner_source, 'html.parser')
+                page_source = driver.page_source
+                inner_soup = BeautifulSoup(page_source, 'html.parser')
 
                 # ১. ম্যাচের নাম বের করা
-                title = "Unknown Match"
                 title_elem = inner_soup.find('h1') or inner_soup.find('h2') or inner_soup.find('title')
-                if title_elem:
-                    title = title_elem.get_text(strip=True).replace(" - Cricket Lounge", "").strip()
+                title = title_elem.get_text(strip=True).replace(" - Cricket Lounge", "").strip() if title_elem else "Cricket Match"
 
-                # ২. ম্যাচের স্ট্যাটাস চেক করা (Live, Upcoming, Ended)
-                status = "Upcoming / Live"
-                if re.search(r'match ended|completed|finished|result', inner_source, re.IGNORECASE):
-                    status = "Ended"
-                elif re.search(r'live', inner_source, re.IGNORECASE):
-                    status = "Live"
-
-                # ৩. ইমেজ URL সংগ্রহ
-                img_url = ""
-                img_elem = inner_soup.find('img')
-                if img_elem:
-                    img_url = img_elem.get('src') or img_elem.get('data-src') or ""
-
-                # ৪. Decimal Sports Embedded Player ID বের করা
+                # ২. ইমবেড প্লেয়ার আইডি খোঁজা (Decimal Sports)
                 decimal_id = None
-                id_match = re.search(r'decimalsports\.com/embeddedplayer/\?id=([a-zA-Z0-9]+)', inner_source)
-                
+                id_match = re.search(r'decimalsports\.com/embeddedplayer/\?id=([a-zA-Z0-9]+)', page_source)
                 if id_match:
                     decimal_id = id_match.group(1)
 
-                # ডাটা যুক্ত করা (যদি প্লেয়ার লিংক না-ও পাওয়া যায়, তবুও আপকামিং বা শেষ হওয়া ম্যাচগুলোর লিস্ট থাকবে)
-                player_url = f"https://www.decimalsports.com/embeddedplayer/?id={decimal_id}" if decimal_id else "N/A"
+                # ৩. ম্যাচের স্ট্যাটাস নির্ধারণ করা (Live, Upcoming, Recent)
+                status = "Upcoming"
+                if re.search(r'match ended|completed|finished|result', page_source, re.IGNORECASE):
+                    status = "Recent / Ended"
+                elif decimal_id or re.search(r'live', page_source, re.IGNORECASE):
+                    status = "Live"
+
+                # ৪. আপকামিং ম্যাচের স্টার্ট টাইম বের করা
+                start_time = "TBD"
+                time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?(?:\s*UTC|\s*GMT)?)', page_source, re.IGNORECASE)
+                date_match = re.search(r'(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b)', page_source, re.IGNORECASE)
+                
+                if time_match and date_match:
+                    start_time = f"{date_match.group(1)} at {time_match.group(1)}"
+                elif time_match:
+                    start_time = time_match.group(1)
+
+                # ৫. ছবি/থাম্বনেইল বের করা
+                img_elem = inner_soup.find('img')
+                img_url = img_elem.get('src') or img_elem.get('data-src') if img_elem else ""
+
+                # ৬. প্লেয়ার ইউআরএল লজিক
+                if status == "Live" and decimal_id:
+                    player_url = f"https://www.decimalsports.com/embeddedplayer/?id={decimal_id}"
+                elif status == "Upcoming":
+                    player_url = UPCOMING_VIDEO_URL
+                else:
+                    player_url = f"https://www.decimalsports.com/embeddedplayer/?id={decimal_id}" if decimal_id else "N/A"
 
                 matches.append({
                     "match_name": title,
                     "status": status,
+                    "start_time": start_time,
                     "image": img_url,
                     "player_url": player_url,
                     "match_link": link
                 })
 
-                print(f"Scraped: {title} | Status: {status} | Player URL: {player_url}")
+                print(f"Scraped: {title} | Status: {status} | Start Time: {start_time}")
 
             except Exception as e:
-                print(f"Error scraping match link {link}: {e}")
+                print(f"Error scraping match {link}: {e}")
 
-        # JSON ফাইলের তথ্য আপডেট
+        # JSON ফাইলে সব ডাটা সেভ করা
         with open("matches.json", "w", encoding="utf-8") as f:
             json.dump(matches, f, ensure_ascii=False, indent=2)
 
-        print(f"Total Scraped Matches Saved: {len(matches)}")
+        print(f"Successfully saved {len(matches)} matches to matches.json")
 
     except Exception as e:
-        print(f"Main Exception: {e}")
+        print(f"Scraper error: {e}")
     finally:
         driver.quit()
 
